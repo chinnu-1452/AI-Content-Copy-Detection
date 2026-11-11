@@ -177,20 +177,26 @@ if st.button("Analyze Document"):
             df = pd.DataFrame(matches)
             st.dataframe(df, use_container_width=True)
 
+           
             for index, match in enumerate(matches):
 
-                with st.expander(
-                    f"Match {index + 1} - {match['similarity']}%"
-                ):
+                st.markdown(f"### Match {index + 1}")
 
-                    st.write("**Uploaded Document:**")
-                    st.write(match["query_chunk"])
+                st.metric("Similarity Score", f"{match['similarity']}%")
 
-                    st.write("**Reference Document:**")
-                    st.write(match["source_chunk"])
+                col1, col2 = st.columns(2)
 
-                    st.write("**Source:**")
-                    st.write(match["source_name"])
+                with col1:
+                    st.markdown("**Uploaded Document**")
+                    st.info(match["query_chunk"])
+
+                with col2:
+                    st.markdown("**Reference Document**")
+                    st.success(match["source_chunk"])
+
+                st.caption(f"Source: {match['source_name']}")
+                st.divider()
+
 
             report = generate_report(matches)
 
