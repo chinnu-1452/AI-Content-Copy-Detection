@@ -1,30 +1,34 @@
 
-def generate_report(df):
+import pandas as pd
 
-    if df.empty:
-        return "No matching passages found."
+
+def generate_report(matches):
+
+    if not matches:
+        return "No matching content found."
+
+    df = pd.DataFrame(matches)
 
     report = "# AI Content Copy Detection Report\n\n"
 
-    report += f"Total matches: {len(df)}\n\n"
+    report += f"Total Matches: {len(df)}\n\n"
+
+    report += "## Matching Results\n\n"
 
     for index, row in df.iterrows():
 
-        report += f"## Match {index + 1}\n"
+        report += f"### Match {index + 1}\n\n"
 
-        report += f"Source: {row['source_name']}\n\n"
+        report += f"**Source:** {row['source_name']}\n\n"
 
-        report += f"Similarity: {row['similarity']}%\n\n"
+        report += f"**Similarity:** {row['similarity']}%\n\n"
 
-        report += f"Suspicious passage:\n{row['query_chunk']}\n\n"
+        report += "**Uploaded Content:**\n\n"
+        report += f"{row['query_chunk']}\n\n"
 
-        report += f"Possible source passage:\n{row['source_chunk']}\n\n"
+        report += "**Reference Content:**\n\n"
+        report += f"{row['source_chunk']}\n\n"
 
-        report += "---\n"
-
-    report += (
-        "\nNote: Similarity scores indicate semantic resemblance, "
-        "not proof of plagiarism or AI authorship.\n"
-    )
+        report += "---\n\n"
 
     return report

@@ -2,28 +2,18 @@
 import streamlit as st
 import pandas as pd
 from pathlib import Path
-from uuid import uuid4
 
 from src.extract import extract_text
 from src.preprocess import clean_text
 from src.chunking import split_into_chunks
-from src.retrieval import retrieve_sources
-from src.similarity import analyze_matches, get_summary
+from src.retrieval import (
+    build_reference_database,
+    reference_database_exists,
+    retrieve_sources
+)
+from src.similarity import filter_matches
 from src.report import generate_report
 
-
-st.set_page_config(
-    page_title="AI Content Copy Detection",
-    page_icon="🔍",
-    layout="wide"
-)
-
-st.title("🔍 AI-Based Content Copy Detection System")
-
-st.write(
-    "Upload a suspicious document and reference documents "
-    "to find semantically similar passages."
-)
 
 REFERENCE_DIR = Path("data/reference_docs")
 UPLOAD_DIR = Path("data/uploads")
@@ -31,211 +21,198 @@ UPLOAD_DIR = Path("data/uploads")
 REFERENCE_DIR.mkdir(parents=True, exist_ok=True)
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
-
-def save_uploaded_file(uploaded_file, folder):
-
-    extension = Path(uploaded_file.name).suffix.lower()
-
-    file_path = folder / f"{uuid4().hex}{extension}"
-
-    file_path.write_bytes(uploaded_file.getvalue())
-
-    return file_path
-
-
-st.sidebar.header("Detection Settings")
-
-threshold = st.sidebar.slider(
-    "Similarity threshold",
-    min_value=0,
-    max_value=100,
-    value=50
+st.set_page_config(
+    page_title="AI Content Copy Detection",
+    page_icon="🔍",
+    layout="wide"
 )
 
-top_k = st.sidebar.slider(
-    "Top source passages",
+st.title("AI-Based Content Copy Detection System")
+
+st.write(
+    "Detect semantically similar content using AI embeddings and FAISS."
+)
+
+# SECTION 1: BUILD REFERENCE DATABASE
+
+st.header("1. Build Reference Database")
+
+reference_files = st.file_uploader(
+    "Upload reference documents",
+    type=["pdf", "docx", "txt"],
+    accept_multiple_files=True,
+    key="reference_files"
+)
+
+if st.button("Build / Update Reference Database"):
+
+    if not reference_files:
+        st.warning("Please upload reference documents.")
+
+    else:
+        all_reference_chunks = []
+
+        with st.spinner("Building reference database..."):
+
+            for uploaded_file in reference_files:
+
+                file_path = REFERENCE_DIR / uploaded_file.name
+
+                with open(file_path, "wb") as file:
+                    file.write(uploaded_file.getbuffer())
+
+                text = extract_text(str(file_path))
+                cleaned_text = clean_text(text)
+
+                chunks = split_into_chunks(cleaned_text)
+
+                for chunk in chunks:
+                    all_reference_chunks.append({
+                        "text": chunk,
+                        "source": uploaded_file.name
+                    })
+
+            if all_reference_chunks:
+
+                count = build_reference_database(
+                    all_reference_chunks
+                )
+
+                st.success(
+                    f"Database created successfully! {count} chunks saved."
+                )
+
+            else:
+                st.error("No text found in uploaded documents.")
+
+
+# SECTION 2: DATABASE STATUS
+
+st.header("2. Database Status")
+
+if reference_database_exists():
+    st.success("Reference database is ready.")
+else:
+    st.warning("Reference database not found. Build it first.")
+
+
+# SECTION 3: ANALYZE DOCUMENT
+
+st.header("3. Analyze Document")
+
+suspicious_file = st.file_uploader(
+    "Upload document to check",
+    type=["pdf", "docx", "txt"],
+    key="suspicious_file"
+)
+
+threshold = st.slider(
+    "Similarity threshold (%)",
+    min_value=0,
+    max_value=100,
+    value=70
+)
+
+top_k = st.slider(
+    "Number of matches",
     min_value=1,
     max_value=10,
     value=5
 )
 
-st.header("1. Upload Reference Documents")
+if st.button("Analyze Document"):
 
-reference_files = st.file_uploader(
-    "Upload original/reference documents",
-    type=["pdf", "docx", "txt"],
-    accept_multiple_files=True,
-    key="references"
-)
+    if suspicious_file is None:
+        st.warning("Please upload a document.")
 
-st.header("2. Upload Suspicious Document")
-
-suspicious_file = st.file_uploader(
-    "Upload document to analyze",
-    type=["pdf", "docx", "txt"],
-    key="suspicious"
-)
-
-if st.button("Analyze Document", type="primary"):
-
-    if not reference_files:
-        st.error("Please upload at least one reference document.")
-
-    elif not suspicious_file:
-        st.error("Please upload a suspicious document.")
+    elif not reference_database_exists():
+        st.error("Build the reference database first.")
 
     else:
 
-        try:
-            reference_chunks = []
+        with st.spinner("Analyzing document..."):
 
-            with st.spinner("Processing reference documents..."):
+            file_path = UPLOAD_DIR / suspicious_file.name
 
-                for uploaded_file in reference_files:
+            with open(file_path, "wb") as file:
+                file.write(suspicious_file.getbuffer())
 
-                    file_path = save_uploaded_file(
-                        uploaded_file,
-                        REFERENCE_DIR
-                    )
+            text = extract_text(str(file_path))
+            cleaned_text = clean_text(text)
 
-                    text = extract_text(file_path)
-                    text = clean_text(text)
+            query_chunks = split_into_chunks(cleaned_text)
 
-                    chunks = split_into_chunks(text)
-
-                    for chunk in chunks:
-
-                        reference_chunks.append({
-                            "text": chunk,
-                            "source": uploaded_file.name
-                        })
-
-            suspicious_path = save_uploaded_file(
-                suspicious_file,
-                UPLOAD_DIR
+            results = retrieve_sources(
+                query_chunks,
+                top_k=top_k
             )
 
-            suspicious_text = extract_text(suspicious_path)
-            suspicious_text = clean_text(suspicious_text)
+            matches = filter_matches(results, threshold)
 
-            query_chunks = split_into_chunks(suspicious_text)
+        st.subheader("Analysis Results")
 
-            if not reference_chunks:
-                st.error("No usable text found in reference documents.")
+        col1, col2, col3 = st.columns(3)
 
-            elif not query_chunks:
-                st.error("No usable text found in suspicious document.")
+        col1.metric("Matching Passages", len(matches))
 
-            else:
+        average_similarity = (
+            sum(item["similarity"] for item in matches) / len(matches)
+            if matches else 0
+        )
 
-                with st.spinner("Generating embeddings and searching sources..."):
+        col2.metric(
+            "Average Similarity",
+            f"{average_similarity:.2f}%"
+        )
 
-                    results = retrieve_sources(
-                        query_chunks,
-                        reference_chunks,
-                        top_k=top_k
-                    )
+        col3.metric(
+            "Possible Source Documents",
+            len(set(item["source_name"] for item in matches))
+        )
 
-                    df = analyze_matches(
-                        results,
-                        threshold=threshold
-                    )
+        if matches:
 
-                summary = get_summary(df)
+            st.subheader("Matched Content")
 
-                st.success("Document analysis completed!")
+            df = pd.DataFrame(matches)
+            st.dataframe(df, use_container_width=True)
 
-                st.header("3. Analysis Summary")
+            for index, match in enumerate(matches):
 
-                col1, col2, col3 = st.columns(3)
+                with st.expander(
+                    f"Match {index + 1} - {match['similarity']}%"
+                ):
 
-                col1.metric(
-                    "Matching passages",
-                    summary["total_matches"]
-                )
+                    st.write("**Uploaded Document:**")
+                    st.write(match["query_chunk"])
 
-                col2.metric(
-                    "Average similarity",
-                    f'{summary["average_similarity"]}%'
-                )
+                    st.write("**Reference Document:**")
+                    st.write(match["source_chunk"])
 
-                col3.metric(
-                    "Possible source documents",
-                    summary["sources_found"]
-                )
+                    st.write("**Source:**")
+                    st.write(match["source_name"])
 
-                st.header("4. Matching Source Documents")
+            report = generate_report(matches)
 
-                if df.empty:
+            st.download_button(
+                "Download Report",
+                data=report,
+                file_name="content_copy_report.md",
+                mime="text/markdown"
+            )
 
-                    st.info(
-                        "No passages crossed the selected similarity threshold."
-                    )
+            csv_data = df.to_csv(index=False)
 
-                else:
+            st.download_button(
+                "Download CSV",
+                data=csv_data,
+                file_name="content_copy_results.csv",
+                mime="text/csv"
+            )
 
-                    st.dataframe(
-                        df[
-                            [
-                                "source_name",
-                                "similarity",
-                                "query_chunk",
-                                "source_chunk"
-                            ]
-                        ],
-                        use_container_width=True,
-                        hide_index=True
-                    )
+        else:
+            st.success("No matches found above the selected threshold.")
 
-                    st.header("5. Detailed Match Analysis")
-
-                    for index, row in df.iterrows():
-
-                        with st.expander(
-                            f"Match {index + 1} - "
-                            f"{row['source_name']} "
-                            f"({row['similarity']}%)"
-                        ):
-
-                            st.write("**Suspicious passage:**")
-                            st.write(row["query_chunk"])
-
-                            st.write("**Possible source passage:**")
-                            st.write(row["source_chunk"])
-
-                st.header("6. Download Report")
-
-                report = generate_report(df)
-
-                st.download_button(
-                    label="Download Analysis Report",
-                    data=report,
-                    file_name="content_detection_report.md",
-                    mime="text/markdown"
-                )
-
-                csv_data = df.to_csv(index=False)
-
-                st.download_button(
-                    label="Download CSV Results",
-                    data=csv_data,
-                    file_name="matching_results.csv",
-                    mime="text/csv"
-                )
-
-                st.caption(
-                    "Similarity scores indicate semantic resemblance. "
-                    "They do not establish plagiarism or AI authorship."
-                )
-
-        except Exception as error:
-
-            st.error(f"An error occurred: {error}")
-            st.exception(error)
-
-
-st.divider()
-
-st.caption(
-    "Built with Python, NLP, Sentence Transformers, FAISS and Streamlit."
-)
+        st.info(
+            "Similarity indicates semantic resemblance, not proof of copying."
+        )

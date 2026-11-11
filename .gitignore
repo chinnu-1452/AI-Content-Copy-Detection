@@ -6,3 +6,5 @@ venv/
 data/uploads/*
 data/reference_docs/*
 *.index
+database/*
+!database/.gitkeep
