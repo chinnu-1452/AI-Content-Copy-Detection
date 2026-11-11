@@ -2,6 +2,16 @@
 
 An AI-powered semantic content copy detection system that identifies similar passages between a suspicious document and reference documents using NLP, Sentence Transformers, and FAISS.
 
+
+## 🚀 Live Demo
+
+**Try the Application:** [AI-Based Content Copy Detection System](https://ai-content-copy-detection-uqkpqgsurejvmal6hzmwzc.streamlit.app/)
+
+## 💻 Source Code
+
+**GitHub Repository:** [AI-Content-Copy-Detection](https://github.com/chinnu-1452/AI-Content-Copy-Detection)
+
+
 ## 📌 Project Overview
 
 This project analyzes uploaded documents and retrieves semantically similar passages from reference documents. It can identify content that has been rewritten using different words but retains a similar meaning.
