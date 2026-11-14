@@ -146,14 +146,22 @@ if st.button("Analyze Document"):
                 query_chunks,
                 top_k=top_k
             )
-
+            st.caption(f"Highest similarity found: {max((r['similarity'] for r in results), default=0):.2f}%")
             matches = filter_matches(results, threshold)
+            best = {}
+            for m in matches:
+                q = m["query_chunk"]
+                if q not in best or m["similarity"] > best[q]["similarity"]:
+                    best[q] = m
+            matches = list(best.values())
+            coverage = 100 * len(matches) / max(len(query_chunks), 1)
 
         st.subheader("Analysis Results")
 
         col1, col2, col3 = st.columns(3)
 
         col1.metric("Matching Passages", len(matches))
+        st.metric("Document Coverage", f"{coverage:.1f}%")
 
         average_similarity = (
             sum(item["similarity"] for item in matches) / len(matches)
