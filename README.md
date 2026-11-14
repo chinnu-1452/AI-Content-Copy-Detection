@@ -11,6 +11,8 @@ An AI-powered semantic content copy detection system that identifies similar pas
 
 **GitHub Repository:** [AI-Content-Copy-Detection](https://github.com/chinnu-1452/AI-Content-Copy-Detection)
 
+## 📸 Screenshots
+![Results](assets/results.png)
 
 ## 📌 Project Overview
 
